@@ -1,0 +1,47 @@
+---
+title: "Functional analysis of single-cell transcriptomics"
+author: "Pau Badia i Mompel"
+date: "5/9/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+Single-cell transcriptomics yield many molecular readouts that one by one are
+hard to interpret. Functional analysis or "enrichment" tries to summarize this
+information into interpretable concepts using prior knowledge, making it easier
+to characterize the biological context being studied. 
+
+The goals of this tutorial are to:
+
+- Introduce the functional analysis concept
+- Understand the differences in enrichment modeling
+- Learn how to run functional analysis
+- Interpret the obtained scores
+
+To do so, we will analyse a downsampled data-set consisting of Blood myeloid
+cells from healthy and COVID-19 infected patients available in the [Single Cell
+Expression Atlas](https://www.ebi.ac.uk/gxa/sc/experiments/E-MTAB-9221/results/tsne?plotType=umap&plotOption=20).
+
+> Silvin A, Chapuis N, Dunsmore G, Goubet AG, Dubuisson A et al. (2020) 
+> Elevated Calprotectin and Abnormal Myeloid Cell Subsets Discriminate Severe 
+> from Mild COVID-19.
+
+
+
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
