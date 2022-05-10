@@ -19,29 +19,395 @@ to characterize the biological context being studied.
 The goals of this tutorial are to:
 
 - Introduce the functional analysis concept
-- Understand the differences in enrichment modeling
 - Learn how to run functional analysis
+- Understand the differences in functional modeling
 - Interpret the obtained scores
 
-To do so, we will analyse a downsampled data-set consisting of Blood myeloid
-cells from healthy and COVID-19 infected patients available in the [Single Cell
-Expression Atlas](https://www.ebi.ac.uk/gxa/sc/experiments/E-MTAB-9221/results/tsne?plotType=umap&plotOption=20).
+To do so, we will analyse a downsampled single-cell transcriptomics dataset
+consisting of human immune cells from healthy and COVID-19 infected patients.
+We leverage the tool [decoupleR](https://saezlab.github.io/decoupleR/),
+a collection of functional statistical methods that can query prior knowledge
+to obtain biological activities from omics data.
 
-> Silvin A, Chapuis N, Dunsmore G, Goubet AG, Dubuisson A et al. (2020) 
-> Elevated Calprotectin and Abnormal Myeloid Cell Subsets Discriminate Severe 
-> from Mild COVID-19.
+# Dependencies
+To be able to run the code, we first need to install (if necessary) and load
+the required packages.
 
+```{r message=FALSE, warning=FALSE, eval=FALSE}
+# Install packages
+if (!requireNamespace("devtools", quietly = TRUE)) {
+  install.packages("devtools")
+}
+if (!requireNamespace("Seurat", quietly = TRUE)) {
+  install.packages("Seurat")
+}
+if (!requireNamespace("decoupleR", quietly = TRUE)) {
+  devtools::install_github("saezlab/decoupleR")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("tibble", quietly = TRUE)) {
+  install.packages("tibble")
+}
+if (!requireNamespace("tidyr", quietly = TRUE)) {
+  install.packages("tidyr")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("pheatmap", quietly = TRUE)) {
+  install.packages("pheatmap")
+}
+if (!requireNamespace("patchwork", quietly = TRUE)) {
+  install.packages("patchwork")
+}
+if (!requireNamespace("ggrepel", quietly = TRUE)) {
+  install.packages("ggrepel")
+}
 
-
-
-```{r cars}
-summary(cars)
+# Load dependencies
+library(Seurat)
+library(decoupleR)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(ggplot2)
+library(pheatmap)
+library(patchwork)
+library(ggrepel)
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+# Data loading
+To load the processed dataset run:
+```{r, eval=FALSE}
+data <- readRDS('data/data.rds')
+data
 ```
+
+What can you tell about this already processed dataset? Explore its metadata and
+try to plot some of its attributes with `FeaturePlot` and `DimPlot`.
+
+```{r, eval=FALSE}
+FeaturePlot(...)
+DimPlot(...)
+```
+
+# Cell type annotation
+In single-cell, we have no prior information of which cell type each cell
+belongs. To assign cell type labels, we first project all cells in a shared
+embedded space, then we find communities of cells that show a similar
+transcription profile and finally we check what cell type specific markers are
+expressed (DotPlots). These genes are mainly expressed exclusively by a specific
+cell type, making them useful to distinguish heterogeneous groups of cells.
+Marker genes were discovered and annotated in previous studies and there are
+some resources that collect and curate them. If more than one marker gene is
+available, statistical methods can be used to test if a set of markers is
+enriched in a given cell population.
+
+`PanglaoDB` is a database of cell type markers, which can be easily accessed
+using a wrapper to `OmniPath` from `decoupleR`.
+
+```{r}
+# Get resource from OmniPath
+pdb <- decoupleR::get_resource(name='PanglaoDB')
+pdb
+```
+
+Take a look how the resource is organized. Can you filter by relevant 
+information? Think of a filtering strategy that will help the annotation of your
+dataset.
+
+```{r}
+
+```
+
+Once filtered, we will give the gene expression and `PanglaoDB` to
+the method Over Representation Analysis (ORA), which will infer how "enriched"
+is each cell to each specific collection of marker genes.
+
+```{r}
+# Extract expression as  a matrix
+mat <- as.matrix(data@assays$RNA@data)
+
+# Run ORA
+ct_scores <- run_ora(mat=mat, net=pdb, .source='cell_type',
+                .target='genesymbol', minsize = 5)
+
+ct_scores
+```
+
+Then, for each individual cell, we can assign what is the most probable cell
+type annotation and store it in a new column to the metadata:
+
+```{r, eval=FALSE}
+# Find most probable cell type per cell
+df <- ct_scores %>%
+  group_by(condition) %>%
+  filter(score == max(score)) %>%
+  distinct(condition, .keep_all = T) %>%
+  select(condition, source) %>%
+  column_to_rownames('condition') %>%
+  as.data.frame()
+
+# Update metadata
+data <- AddMetaData(data, df, col.name = 'pred_cell_type')
+```
+
+Explore the results with `DimPlot` and discuss what do you think of them. Can 
+you assign a cell type to each cluster? Store the results in the variable 
+`clust_names` as a vector where the first value is the assigned cell type for
+cluster 0, the second is the one for cluster 1 and so on.
+
+```{r}
+
+```
+
+Then we can update the metadata with the new cluster annotations:
+
+```{r}
+names(clust_names) <- levels(data)
+data <- RenameIdents(data, clust_names)
+DimPlot(data, reduction = 'umap')
+```
+
+# Transcription factor activity inference
+Transcription factors (TF) are proteins that regulate the expression of specific 
+target genes. Gene regulation can be represented as a Gene Regulatory Network
+(GRN), where TFs regulate downstream target genes (which can be other TFs). 
+
+[DoRothEA](https://saezlab.github.io/dorothea/) is a comprehensive resource
+containing a curated collection of TFs and their transcriptional targets. Since
+these regulons were gathered from different types of evidence, interactions in
+DoRothEA are classified in different confidence levels, ranging from A (highest
+confidence) to D (lowest confidence). Moreover, each interaction is weighted by
+its confidence level and the sign of its mode of regulation (activation or
+inhibition).
+
+It can be easily accessed using a wrapper to `OmniPath` from `decoupleR`. To 
+keep it simple, we will use the top confidence levels, A, B and C.
+
+```{r, eval=FALSE}
+# Get resource from OmniPath
+doro <- decoupleR::get_dorothea(organism = 'human', levels = c('A', 'B', 'C'))
+doro
+```
+
+Explore a little bit the obtained network. How many interactions are coming
+from each confidence level? What is the distribution of mode of regulations?
+What is the distribution of number of target genes per TF?
+
+```{r, eval=FALSE}
+
+```
+
+Afterwards, we will give the gene expression and `DoRothEA` to
+the method weighted mean (WMEAN), which will infer activity scores for each TF
+in each cell.
+
+```{r, eval=FALSE}
+# Run WMEAN
+tf_scores <- run_wmean(mat=mat, net=doro, .source='source',
+                .target='target', .mor = 'mor', minsize = 5)
+
+tf_scores
+```
+
+Explore the obtained TF activities. Why are there three different statistics?
+What does each one represent? Choose a statistic:
+
+```{r, eval=FALSE}
+# Pick a statistic
+stat_name <- # wmean, corr_wmean, norm_wmean
+```
+
+Store the results of the chosen statistic as a new assay in our object:
+```{r, eval=FALSE}
+data[['tfs']] <- tf_scores %>%
+  filter(statistic == stat_name) %>%
+  pivot_wider(id_cols = 'source', names_from = 'condition',
+              values_from = 'score') %>%
+  column_to_rownames('source') %>%
+  Seurat::CreateAssayObject(.)
+
+# Change assay
+DefaultAssay(object = data) <- "tfs"
+
+# Scale the data
+data <- ScaleData(data)
+data@assays$tfs@data <- data@assays$tfs@scale.data
+```
+
+Why do you think we need to scale the obtained activities? Discuss about it.
+
+Now we can plot the top TFs that change the most across cell types:
+
+```{r}
+# Number of TFs to plot
+n_tfs <- 25
+
+# Extract activities from object as a long dataframe
+df <- t(as.matrix(data@assays$tfs@data)) %>%
+  as.data.frame() %>%
+  mutate(cluster = Idents(data)) %>%
+  pivot_longer(cols = -cluster, names_to = "source", values_to = "score") %>%
+  group_by(cluster, source) %>%
+  summarise(mean = mean(score))
+
+# Get top tfs with more variable means across clusters
+tfs <- df %>%
+  group_by(source) %>%
+  summarise(std = sd(mean)) %>%
+  arrange(-abs(std)) %>%
+  head(n_tfs) %>%
+  pull(source)
+
+# Subset long data frame to top tfs and transform to wide matrix
+top_acts_mat <- df %>%
+  filter(source %in% tfs) %>%
+  pivot_wider(id_cols = 'cluster', names_from = 'source',
+              values_from = 'mean') %>%
+  column_to_rownames('cluster') %>%
+  as.matrix()
+
+# Choose color palette
+palette_length = 100
+my_color = colorRampPalette(c("Darkblue", "white","red"))(palette_length)
+
+my_breaks <- c(seq(-3, 0, length.out=ceiling(palette_length/2) + 1),
+               seq(0.05, 3, length.out=floor(palette_length/2)))
+
+# Plot
+pheatmap(top_acts_mat, border_color = NA, color=my_color, breaks = my_breaks) 
+```
+
+We can also visualize them at the single-cell level:
+```{r}
+# TF to visualize
+tf <- 'GATA1'
+
+# Plot TF in cells
+p1 <- DimPlot(data, reduction = "umap", label = TRUE) + 
+  NoLegend() + ggtitle('Cell types')
+
+p2 <- (FeaturePlot(data, features = tf) & 
+  scale_colour_gradient2(low = 'blue', mid = 'white', high = 'red')) +
+  ggtitle(tf)
+
+p1 | p2
+```
+
+Do these results make sense? Search some active TFS in the literature to
+confirm.
+
+# Pathway activity inference
+
+Cells activate or inhibit gene programs, called pathways, that module the cell
+response to external changes. For example they can induce apoptosis if they are
+targeted by immune cells or shift metabolism when oxygen is not available.
+
+[PROGENy](https://saezlab.github.io/progeny/) is a comprehensive resource
+containing a curated collection of pathways and their target genes, with
+weights (activation or inhibition) and p-values for each interaction.
+
+It can be easily accessed using a wrapper to `OmniPath` from `decoupleR`. To get
+the high confidence interaction we will retrieve the top 100 target genes by
+significance per pathway.
+
+```{r}
+# Get resource from OmniPath
+pry <- decoupleR::get_progeny(organism = 'human', top = 100)
+pry
+```
+
+Explore the obtained dataframe. How many different pathways does PROGENy
+contain. Discuss some of its pathways, what biological processes are they
+regulating? Search literature if needed.
+
+```{r}
+
+```
+
+In the previous exercise, we estimated TF activities per cell type but we did
+not explore the differences between healthy and COVID-19 patients. To do so,
+first we will compute the Differential Expressed Genes (DEG) between conditions
+for Neutrophils.
+
+```{r}
+# Change assay back to RNA
+DefaultAssay(object = data) <- "RNA"
+
+# Find DEG
+deg <- FindMarkers(data, ident.1 = "COVID-19",
+                   group.by = 'disease', subset.ident = "Neutrophils")
+deg
+```
+
+What can you tell about the top DEG? Try looking at literature for meaning.
+
+Results from DEG can be used for functional enrichment. Now we will use the
+obtained logFCs and estimate pathway activities from them using WMEAN:
+
+```{r}
+deg_mat <- deg %>% 
+  select(avg_log2FC) %>% 
+  rename('COVID_vs_healthy' = avg_log2FC) %>%
+  as.matrix()
+
+# Run WMEAN
+pw_scores <- run_wmean(mat=deg_mat, net=pry, .source='source',
+                .target='target', .mor = 'weight', minsize = 5)
+
+pw_scores
+```
+
+Then we will extract the obtained activities for the previously selected WMEAN
+variant (`stat_name`) and plot the obtained activities:
+
+```{r}
+# Plot
+ggplot(filter(pw_scores, statistic == stat_name), 
+       aes(x = reorder(source, score), y = score)) + 
+    geom_bar(aes(fill = score), stat = "identity") +
+    scale_fill_gradient2(low = "darkblue", high = "indianred", 
+        mid = "whitesmoke", midpoint = 0) + 
+    theme_minimal() +
+    theme(axis.title = element_text(face = "bold", size = 12),
+        axis.text.x = 
+            element_text(angle = 45, hjust = 1, size =10, face= "bold"),
+        axis.text.y = element_text(size =10, face= "bold"),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank()) +
+    xlab("Pathways")
+```
+
+We can further characterize the target genes:
+```{r}
+pathway <- 'Hypoxia'
+
+df <- pry %>%
+  filter(source == pathway) %>%
+  arrange(target) %>%
+  mutate(ID = target, color = "3") %>%
+  column_to_rownames('target')
+inter <- sort(intersect(rownames(deg),rownames(df)))
+df <- df[inter, ]
+df['t_value'] <- deg[inter, 'avg_log2FC']
+df <- df %>%
+  mutate(color = if_else(weight > 0 & t_value > 0, '1', color)) %>%
+  mutate(color = if_else(weight > 0 & t_value < 0, '2', color)) %>%
+  mutate(color = if_else(weight < 0 & t_value > 0, '2', color)) %>%
+  mutate(color = if_else(weight < 0 & t_value < 0, '1', color))
+
+ggplot(df, aes(x = weight, y = t_value, color = color)) + geom_point() +
+  scale_colour_manual(values = c("red","royalblue3","grey")) +
+  geom_label_repel(aes(label = ID)) + 
+  theme_minimal() +
+  theme(legend.position = "none") +
+  geom_vline(xintercept = 0, linetype = 'dotted') +
+  geom_hline(yintercept = 0, linetype = 'dotted') +
+  ggtitle(pathway)
+```
+
+Comment the obtained results. Do they make sense? Explore other cell types.
+
