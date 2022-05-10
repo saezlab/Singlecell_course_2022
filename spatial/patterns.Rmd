@@ -1,13 +1,15 @@
 ---
-title: "Spatial patterns"
+title: "Identification and analysis of spatial patterns"
+author: "Jovan Tanevski"
+date: "13.05.2022"
 output: html_notebook
 ---
 
 # Setup
 
-Install BioC and other required packages
+Install Bioconductor and the required packages.
 
-```{r}
+```{r message=FALSE}
 library(TENxVisiumData)
 library(SpatialExperiment)
 library(ggspavis)
@@ -17,11 +19,29 @@ library(decoupleR)
 library(tidyverse)
 ```
 
-The SpatialExperiment object
+# Dataset
 
-# Extract information
+One of the common formats for storing sptial data in R is `SpatialExperiment`. Familiarize yourself with the details of the storage object and how to access various aspects of the data.
 
-Choose a dataset of interest `?TENxVisiumData`
+First resource is the vignette of the package `SpatialExperiment`
+
+```{r}
+vignette("SpatialExperiment")
+```
+
+The vignette is also available [online](https://bioconductor.org/packages/release/bioc/vignettes/SpatialExperiment/inst/doc/SpatialExperiment.html).
+
+More information can be found in the [bioRxiv preprint](https://www.biorxiv.org/content/10.1101/2021.01.27.428431v3) or in the online textbook on ["Orchestrating Spatially Resolved Transcriptomics Analysis with Bioconductor" (OSTA)](https://lmweber.org/OSTA-book/).
+
+The package `TENxVisiumData` allows easy access to a collection of publicly available 10x Visium spatial transcriptomics datasets in `SpatialExperiment` format. You can find a complete list of available datasets by running `?TENxVisiumData`. More information about the data can be found on the [10x website](https://www.10xgenomics.com/resources/datasets).
+
+For starters we will use a sample of a tissue from a human heart. In the following snippet you will find an example of plotting SpatialExperiment data with `ggspavis` . When plotting the abundance of a single gene, the symbol is given as an [Ensembl](www.ensembl.org) id.
+
+A convinient map from Ensembl id to a gene symbol can be found in the `rowData` field of the `SpatialExperiment` object.
+
+There are several ways how to normalize the data and stabilize the variance across genes. Here, after removing duplicate symbols and genes with total count of zero, we use regularized negative binomial regression.
+
+Note also that the spatial information that we are going to use is not the scaled pixel location available from `spatialCoords(spe)` , but rather the true row and column of the Visium spot in the tissue array.
 
 ```{r}
 
@@ -43,19 +63,27 @@ data.geometry <- int_colData(spe)$spatialData[,c("array_row", "array_col")]
 
 ```
 
-# Spatial autocorrelation
+# Spatial patterns
 
-10 nearest neighbors or actual grid neighbors
+The goal of the practical is to identify genes that exhibit spatial patterns. There are many approaches how to do this. The most basic approaches are based on measuring the spatial autocorrelation of a gene. There are several more advanced ways to detect genes with spatial patterns. Here we have an example of using SPARK with extended number of kernels (pattern templates).
 
-## Global spatial autocorrelation
+## Spatial autocorrelation
+
+Implement an efficient function (runs in reasonable amount of time on your computer) to calculate spatial autocorrelation. Then, apply the function on all genes in the *normalized* data.
+
+### Global spatial autocorrelation
+
 Moran's I
 
 $$
 I = \frac{N}{W}\frac{\sum_{i=1}^N\sum_{j=1}^Nw_{ij}(x_i - \bar{x})(x_j - \bar{x})}{\sum_{i=1}^N(x_i - \bar{x})^2}
 $$
 
+The code here is just a placeholder! Write an implementation of the above formula.
+
 ```{r}
 moranI <- function(expression, location){
+  
   # placeholder
   xbar <- mean(expression)
   return(abs(rnorm(1, xbar)))
@@ -67,12 +95,15 @@ moran <- rownames(data.vst) %>%
 
 ```
 
-## Local spatial autocorrelation (optional)
+### Local spatial autocorrelation (optional)
+
 Geary's C
 
 $$
 C = \frac{(N-1)}{2W}\frac{\sum_{i=1}^N\sum_{j=1}^Nw_{ij}(x_i - x_j)^2}{\sum_{i=1}^N(x_i - \bar{x})^2}
 $$
+
+The code here is just a placeholder! Write an implementation of the above formula.
 
 ```{r}
 gearyC <- function(expression, location){
@@ -87,18 +118,17 @@ geary <- rownames(data.vst) %>%
 
 ```
 
+## SPARK
 
-# SPARK
-
-Works with raw counts
+Note that SPARK works with raw counts.
 
 ```{r}
 spark.patterns <- sparkx(data.raw.counts.filtered, data.geometry, numCores = 4)
 ```
 
-# ORA
+# Functional annotation of patterns
 
-Functional annotation based on spatial patterns
+Once we have quantified in different ways the spatial patterns of expression of different genes, we are interested in the functional annotation of the set of genes with spatial patterns.
 
 ```{r}
 msigdb <- get_resource("MSigDB")
@@ -112,10 +142,16 @@ enrich.spark <- run_ora(1 - spark.patterns$res_mtest %>% select(adjustedPval) %>
 
 ```
 
-Enrich moran and geary. Careful with the values and their meaning.
+*Can we claim that the some of the hallmark states or processes show spatial patterns? Why not?*
 
-Try enrichment per individual spark kernel scores (Hint: stats or res_stest).
+# Further work
 
-What are the constituent genes of the pathways. Check in the msigdb object. Plot some of them with high scores or low p-values to visualize the spatial patterns.
+-   Following the SPARK example, enrich the results obtained by calculating Moran's I (and Geary's C). Be careful! The values of Moran's I and Geary's C are on different ranges ([-1, 1] vs [0, Inf]) and have a different meaning. What are the differences in the result of the enrichment?
 
-Try running the same on a cancer slide. 
+-   Try enrichment per individual spark kernel scores (Hint: `spark.patterns$stats` or `spark.patterns$res_stest`).
+
+-   What are the constituent genes of the pathways? Check in the `msigdb` object. Plot some of them with high scores or low p-values to visualize the spatial patterns.
+
+-   Are genes with significant spatial patterns colocalized? Visualize or try to quantify.
+
+-   Try running the same analysis on a cancer sample.
