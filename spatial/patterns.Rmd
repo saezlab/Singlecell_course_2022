@@ -1,0 +1,121 @@
+---
+title: "Spatial patterns"
+output: html_notebook
+---
+
+# Setup
+
+Install BioC and other required packages
+
+```{r}
+library(TENxVisiumData)
+library(SpatialExperiment)
+library(ggspavis)
+library(sctransform)
+library(SPARK)
+library(decoupleR)
+library(tidyverse)
+```
+
+The SpatialExperiment object
+
+# Extract information
+
+Choose a dataset of interest `?TENxVisiumData`
+
+```{r}
+
+spe <- HumanHeart()
+plotVisium(spe, spots=FALSE)
+plotMolecules(spe, molecule = "ENSG00000181449")
+
+data.raw.counts <- counts(spe)
+
+symbols <- rowData(spe)[,"symbol"]
+rownames(data.raw.counts) <- symbols
+
+data.raw.counts.filtered <- data.raw.counts[(!duplicated(symbols) & rowSums(data.raw.counts) != 0), ]
+
+data.vst <- vst(data.raw.counts.filtered)$y
+  
+data.geometry <- int_colData(spe)$spatialData[,c("array_row", "array_col")]
+
+
+```
+
+# Spatial autocorrelation
+
+10 nearest neighbors or actual grid neighbors
+
+## Global spatial autocorrelation
+Moran's I
+
+$$
+I = \frac{N}{W}\frac{\sum_{i=1}^N\sum_{j=1}^Nw_{ij}(x_i - \bar{x})(x_j - \bar{x})}{\sum_{i=1}^N(x_i - \bar{x})^2}
+$$
+
+```{r}
+moranI <- function(expression, location){
+  # placeholder
+  xbar <- mean(expression)
+  return(abs(rnorm(1, xbar)))
+}
+
+moran <- rownames(data.vst) %>% 
+  map_dfr(~tibble_row(gene = .x, autoc = moranI(data.vst[.x,], data.geometry)))
+  
+
+```
+
+## Local spatial autocorrelation (optional)
+Geary's C
+
+$$
+C = \frac{(N-1)}{2W}\frac{\sum_{i=1}^N\sum_{j=1}^Nw_{ij}(x_i - x_j)^2}{\sum_{i=1}^N(x_i - \bar{x})^2}
+$$
+
+```{r}
+gearyC <- function(expression, location){
+  
+  # placeholder
+  xbar <- mean(expression)
+  return(abs(rnorm(1, xbar)))
+}
+
+geary <- rownames(data.vst) %>% 
+  map_dfr(~tibble_row(gene = .x, autoc = gearyC(data.vst[.x,], data.geometry)))
+
+```
+
+
+# SPARK
+
+Works with raw counts
+
+```{r}
+spark.patterns <- sparkx(data.raw.counts.filtered, data.geometry, numCores = 4)
+```
+
+# ORA
+
+Functional annotation based on spatial patterns
+
+```{r}
+msigdb <- get_resource("MSigDB")
+
+
+enrich.spark <- run_ora(1 - spark.patterns$res_mtest %>% select(adjustedPval) %>% 
+                   as.matrix(), 
+                 msigdb %>% filter(collection == "hallmark") %>% 
+                   select(-uniprot) %>% distinct(), 
+                 .source="geneset", .target="genesymbol")
+
+```
+
+Enrich moran and geary. Careful with the values and their meaning.
+
+Try enrichment per individual spark kernel scores (Hint: stats or res_stest).
+
+What are the constituent genes of the pathways. Check in the msigdb object. Plot some of them with high scores or low p-values to visualize the spatial patterns.
+
+Try running the same on a cancer slide. 
