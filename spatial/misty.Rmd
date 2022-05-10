@@ -25,7 +25,7 @@ library(distances)
 library(sctransform)
 
 # resource
-library(progeny)
+library(decoupleR)
 library(TENxVisiumData)
 
 # plotting
@@ -68,7 +68,13 @@ data.geometry <- int_colData(spe)$spatialData[,c("array_row", "array_col")]
 Instead of focusing on the top constituent genes of two pathways of interest as in the breast cancer example, here we are interested in the potential intra and intercellular pathway crostallks in the tissue. For this, as intraview representation of each spot, we will consider the estimated pathway activities in that spot. We will also consider adding a pathway activity paraview. The complete workflow, view generation, composition, modeling and result collection is given below.
 
 ```{r}
-pathway.activities <- progeny(data.vst) %>% as_tibble()
+pry <- decoupleR::get_progeny(organism = 'human', top = 100)
+pathway.activities <- run_wmean(mat=data.vst, net=pry, .source='source',
+                .target='target', .mor = 'weight', minsize = 5) %>%
+  filter(statistic == 'norm_wmean') %>%
+  pivot_wider(id_cols = 'source', names_from = 'condition',
+              values_from = 'score') %>%
+  column_to_rownames('source')
 colnames(pathway.activities) <- make.names(colnames(pathway.activities))
 
 misty.views <- create_initial_view(pathway.activities) %>% 
