@@ -41,6 +41,9 @@ if (!requireNamespace("devtools", quietly = TRUE)) {
 if (!requireNamespace("Seurat", quietly = TRUE)) {
   install.packages("Seurat")
 }
+if (!requireNamespace("OmnipathR", quietly = TRUE)) {
+  devtools::install_github("saezlab/OmnipathR")
+}
 if (!requireNamespace("decoupleR", quietly = TRUE)) {
   devtools::install_github("saezlab/decoupleR")
 }
@@ -383,7 +386,7 @@ ggplot(filter(pw_scores, statistic == stat_name),
 
 We can further characterize the target genes:
 ```{r}
-pathway <- 'Hypoxia'
+pathway <- 'TNFa'
 
 df <- pry %>%
   filter(source == pathway) %>%
