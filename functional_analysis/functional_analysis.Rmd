@@ -29,6 +29,11 @@ We leverage the tool [decoupleR](https://saezlab.github.io/decoupleR/),
 a collection of functional statistical methods that can query prior knowledge
 to obtain biological activities from omics data.
 
+Through the markdown there are different questions that you need to answer. 
+AT the end of the session, upload your notebooks 
+[here](https://www.dropbox.com/request/CSkkwGYaazv5YlwNHb27). Name your
+notebook as *FirstLastName_programme_funcomics.Rmd*.
+
 # Dependencies
 To be able to run the code, we first need to install (if necessary) and load
 the required packages.
@@ -413,4 +418,3 @@ ggplot(df, aes(x = weight, y = t_value, color = color)) + geom_point() +
 ```
 
 Comment the obtained results. Do they make sense? Explore other cell types.
-
