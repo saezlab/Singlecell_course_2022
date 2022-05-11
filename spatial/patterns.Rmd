@@ -142,16 +142,20 @@ enrich.spark <- run_ora(1 - spark.patterns$res_mtest %>% select(adjustedPval) %>
 
 ```
 
-*Can we claim that the some of the hallmark states or processes show spatial patterns? Why not?*
+Can we claim that the some of the hallmark states or processes show spatial patterns? Why not? What type of analysis would support such a claim? ***\*\*\****
 
 # Further work
 
--   Following the SPARK example, enrich the results obtained by calculating Moran's I (and Geary's C). Be careful! The values of Moran's I and Geary's C are on different ranges ([-1, 1] vs [0, Inf]) and have a different meaning. What are the differences in the result of the enrichment?
+-   Following the SPARK example, enrich the results obtained by calculating Moran's I (and Geary's C). Be careful! The values of Moran's I and Geary's C are on different ranges ([-1, 1] vs [0, Inf]) and have a different meaning. What are the differences in the result of the enrichment? ***\*1***
 
 -   Try enrichment per individual spark kernel scores (Hint: `spark.patterns$stats` or `spark.patterns$res_stest`).
 
 -   What are the constituent genes of the pathways? Check in the `msigdb` object. Plot some of them with high scores or low p-values to visualize the spatial patterns.
 
--   Are genes with significant spatial patterns colocalized? Visualize or try to quantify.
+-   Are genes with significant spatial patterns co-localized? Visualize or try to quantify.
 
--   Try running the same analysis on a cancer sample.
+-   Try running the same analysis on a cancer sample. Where and what are the differences? ***\*2***
+
+```{r}
+# space for your own work if you chose to answer *1 or *2
+```

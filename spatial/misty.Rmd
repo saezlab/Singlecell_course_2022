@@ -96,4 +96,9 @@ Explore the results:
 
 -   Why are the targets trimmed to 1?
 
--   PROGENy is a resource that is better suited for the analysis of pathway activities in cancer samples. Run the PROGENy informed MISTy pathway on a cancer sample from the 10x collection.
+-   PROGENy is a resource that is better suited for the analysis of pathway activities in cancer samples. Run the PROGENy informed MISTy pathway analysis on a cancer sample from the 10x collection. Explore the results and comment on them. ***\*3***
+
+
+```{r}
+# space for your own work if you chose to answer *3
+```
