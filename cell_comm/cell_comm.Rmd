@@ -1,0 +1,319 @@
+---
+title: "Cell Cell Comunication inference"
+author: "Pau Badia i Mompel"
+date: "5/9/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+Cells are not independent entities in biology, they react to stimuli coming
+from their environment. Cells can react to chemical cues, but also to other
+cells. These cell-cell signaling events can trigger crucial biological processes
+like apoptosis or cell migration, making the study of them relevant to better
+understand diseases. Cell-cell communication (CCC) events can be inferred from
+trascriptomics using a prior knowledge resource and a statistical method. 
+
+The goals of this tutorial are to:
+
+- Introduce the CCC concept
+- Learn how to run CCC methods
+- Interpret the obtained scores
+
+To do so, we will analyse a downsampled single-cell transcriptomics dataset
+consisting of human immune cells from healthy and COVID-19 infected patients.
+We leverage the tool [LIANA](https://saezlab.github.io/liana/), a collection of
+CCC inference methods that can query prior knowledge to generate hypothesis
+of cell interactions. 
+
+Through the markdown there are different questions that you need to answer. 
+AT the end of the session, upload your notebooks 
+[here](https://www.dropbox.com/request/CSkkwGYaazv5YlwNHb27). Name your
+notebook as *FirstLastName_programme_comm.Rmd*.
+
+# Dependencies
+To be able to run the code, we first need to install (if necessary) and load
+the required packages.
+
+```{r message=FALSE, warning=FALSE, eval=FALSE}
+# Install packages
+if (!requireNamespace("devtools", quietly = TRUE)) {
+  install.packages("devtools")
+}
+if (!requireNamespace("Seurat", quietly = TRUE)) {
+  install.packages("Seurat")
+}
+if (!requireNamespace("OmnipathR", quietly = TRUE)) {
+  devtools::install_github("saezlab/OmnipathR")
+}
+if (!requireNamespace("liana", quietly = TRUE)) {
+  devtools::install_github("saezlab/liana")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("tibble", quietly = TRUE)) {
+  install.packages("tibble")
+}
+if (!requireNamespace("tidyr", quietly = TRUE)) {
+  install.packages("tidyr")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+
+# Load dependencies
+library(Seurat)
+library(liana)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(ggplot2)
+```
+
+# Data loading
+
+To load the processed dataset run:
+```{r, eval=FALSE}
+data <- readRDS('../functional_analysis/data/data.rds')
+
+# Add Annotation
+clust_names <- c("T cells", "Neutrophils", "Dendritic cells", "Megakaryocytes")
+names(clust_names) <- levels(data)
+data <- RenameIdents(data, clust_names)
+
+# Plot
+DimPlot(data)
+```
+
+# Inference of CCC events at the cluster level
+
+Recently, multiple tools and resources that infer CCC were published with
+different modeling strategies. All of them assume that CCC events can be inferred
+only from transcriptomics. They check the expression of ligands coming from a
+"source" cell type and a receptor from a "target" cell type that are known to 
+interact. If both protein genes are expressed, the methods return
+these interactions as being relevant for the given dataset. 
+
+Discuss what are the limitations of assuming that CCC events can be inferred from
+only transcriptomics. Think about how interactions between cells can occur.
+
+```{r}
+# Write text here
+```
+
+Moreover, multiple prior knowledge resources of CCC interaction are available 
+coming from different studies. You can print them with this line:
+
+```{r}
+show_resources()
+```
+Despite this, most published methods use a fixed resource and ignore the rest.
+
+Discuss what happens if only one resource and method are taken into
+consideration while ignoring the others.
+
+```{r}
+# Write text here
+```
+
+To start, we will infer CCC interactions using the `natmi` method with the
+OmniPath resource. `natmi` ranks CCC events by how specific they are across cells.
+It first computes a specificity score for each ligand/receptor, defined as the
+mean expression of the ligand/receptor in a given cell type divided by the sum
+of the mean expression of that ligand/receptor across all cell types (can be
+understood as a proportion). Then the final score is the product of the
+ligand and receptor specificities. The scores range from 0 to 1, 1 being the
+most relevant.
+
+We will leverage the easy to use wrapper provided by `liana`:
+```{r}
+res_natmi_omnipath <- liana_wrap(data, method = 'natmi', resource = 'OmniPath')
+res_natmi_omnipath
+```
+
+Explore a little bit the obtained results, do they make biological sense? Search
+for literature.
+
+```{r}
+# Write text here
+```
+
+Now we will run it again, but this time changing the resource to 
+connectomeDB2020 (the resource they used in `natmi`'s original publication):
+
+```{r}
+res_natmi_connectomeDB2020 <- liana_wrap(data, method = 'natmi', 
+                                    resource = 'connectomeDB2020')
+res_natmi_connectomeDB2020
+```
+
+Compare the results manually, are they the same? 
+
+```{r}
+# Write text here
+```
+
+What is the number of shared interactions between the top 100 of both runs?
+
+```{r}
+# Write code here
+```
+
+Now let's try what happens when we change the method. The method `sca` first 
+identifies all DEG across clusters and removes non-significant genes from the
+gene expression matrix. Then it computes a ligand-receptor (LR)  core by
+multiplying the squared root of the LR product and dividing this by the 
+mean expression of the gene expression matrix plus the squared root of the LR
+product. Again, the score can be interpreted as a proportion, and goes from 0 to
+1, 1 being more relevant. To run the method let's use `liana` again:
+
+```{r}
+res_sca_omnipath <- liana_wrap(data, method = 'sca', resource = 'OmniPath')
+res_sca_omnipath
+```
+
+Like before, compare the top 100 interactions but now across the three different
+results. 
+
+```{r}
+# Write code here
+```
+
+What do you think of the overlap, are they comparable?
+
+```{r}
+# Write text here
+```
+
+As you have seen, results tend to be quite different depending on the choice of
+method and prior knowledge database. To try to mitigate this, `liana` uses
+a consensus database as the prior knowledge resource (where interactions coming
+from different resources where aggregated). It also runs several top-performing
+CCC inference methods sequentially. We can run it with:
+
+```{r}
+res_liana_consensus <- liana_wrap(data)
+```
+
+We obtain a dataframe for each method. Then, from these `liana` builds a 
+consensus score based on the similarity of the rankings, in the form of a 
+p-value which can be used to filter by significance.
+
+```{r}
+aggr_liana_consensus <- liana_aggregate(res_liana_consensus) %>%
+  filter(aggregate_rank < 0.05)
+aggr_liana_consensus
+```
+
+We can then visualize the top interactions by running:
+```{r}
+# Source cell type to plot
+cell_type <- "T cells"
+
+aggr_liana_consensus %>% 
+  filter(source == cell_type) %>%
+  top_n(25, desc(aggregate_rank)) %>%
+  liana_dotplot(source_groups = c(cell_type), target_groups = clust_names) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.95, hjust=1, size = 12))
+```
+
+Here interaction specificity is the `natmi` score and the expression magnitude
+is the LR score from `sca`, previously described in the notebook.
+
+Discuss a little bit the results, do these interactions make sense?
+```{r}
+# Write text here
+```
+
+# Inference of CCC events in disease
+
+Up until now we were ignoring the disease vs healthy comparison in the inference
+of CCC events. In disease, we expect to see differences in how cell interact, for
+example we might see T cells interacting with infected cells to trigger their
+apoptosis but not so much in healthy tissue, or cancer cells interacting with
+many cell types to create a tumor microenviroment. 
+
+To compare healthy vs disease, we will compute their CCC events separately.
+First, we need to subset our data between healthy and disease:
+```{r}
+healthy <- subset(x = data, subset = disease == "normal")
+disease <- subset(x = data, subset = disease == 'COVID-19')
+```
+
+Then we run consensus `liana` like we did before but for each new object
+separatelly:
+```{r}
+healthy_ccc <- liana_wrap(healthy)
+disease_ccc <- liana_wrap(disease)
+```
+
+We aggregate their scores:
+```{r}
+aggr_healthy_ccc <- liana_aggregate(healthy_ccc)
+
+aggr_disease_ccc <- liana_aggregate(disease_ccc)
+```
+
+Explore a little bit the results, how many interactions do we get at the top 
+100 between healthy and disease? 
+
+```{r}
+# Write code here
+```
+
+We can assume that a LR pair is specific for disease if it is ranked low in
+healthy but high in disease. Then, following this assumption we can come up
+with a simple disease score:
+
+score = aggr_disease_ccc / (aggr_disease_ccc + aggr_healthy_ccc)
+
+This formula returns values close to zero (significant) when a LR pair is
+non-significant in healthy but significant in disease, and it returns values
+close to 1 whenever both or similar. Let's obtain the 
+disease score dataframe by running:
+```{r}
+contrast_ccc <- aggr_healthy_ccc %>%
+  rename('healthy_aggregate_rank' = aggregate_rank) %>%
+  left_join(aggr_disease_ccc, by = c("source", "target", "ligand", "receptor")) %>%
+  rename('disease_aggregate_rank' = aggregate_rank) %>%
+  mutate(score = disease_aggregate_rank / (disease_aggregate_rank + healthy_aggregate_rank)) %>%
+  select(source, target, ligand, receptor, healthy_aggregate_rank,
+         disease_aggregate_rank, score) %>%
+  arrange(score)
+contrast_ccc
+```
+
+We can then visualize the top interactions by running:
+```{r}
+# Source cell type to plot
+cell_type <- "Megakaryocytes"
+
+contrast_ccc %>% 
+  filter(source == cell_type) %>%
+  top_n(25, desc(score)) %>%
+  mutate(disease_aggregate_rank = -log10(disease_aggregate_rank),
+         score = -log10(score)) %>%
+  liana_dotplot(source_groups = c(cell_type), target_groups = clust_names, 
+                show_complex = F, magnitude = 'score',
+                colour.label = 'score', 
+                specificity = 'disease_aggregate_rank', 
+                size.label = 'disease_aggregate_rank') +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.95, hjust=1, size = 12))
+```
+
+Explore a little bit the results for 2 cell types and write some biological
+insights you can extract from this analysis:
+
+```{r}
+# Write text here
+```
+
+
+
+
+
